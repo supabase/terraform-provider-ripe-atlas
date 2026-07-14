@@ -154,6 +154,10 @@ provider "ripe-atlas" {
 
 `api_key` is marked sensitive and never appears in plain text in Terraform state.
 
+### Required API key permissions
+
+Generate an API key at [atlas.ripe.net/keys/](https://atlas.ripe.net/keys/). The required permissions are listed in the [atlasctl documentation](https://github.com/supabase/atlasctl#required-api-key-permissions).
+
 ## Credit costs
 
 | Type | Credits per result |
