@@ -1,0 +1,21 @@
+{
+  "fetched_at": "2026-07-17T00:00:00Z",
+  "probes": [
+    {"id": 1001, "asn4": 7018,   "country_code": "US", "tags": ["system-ipv4-stable-90d", "home"],   "lat": 40.7128,  "lon": -74.0060,  "status_id": 1},
+    {"id": 1002, "asn4": 7922,   "country_code": "US", "tags": ["system-ipv4-stable-90d", "office"], "lat": 37.7749,  "lon": -122.4194, "status_id": 1},
+    {"id": 1003, "asn4": 2856,   "country_code": "GB", "tags": ["system-ipv4-stable-90d", "fibre"],  "lat": 51.5074,  "lon": -0.1278,   "status_id": 1},
+    {"id": 1004, "asn4": 3320,   "country_code": "DE", "tags": ["system-ipv4-stable-90d"],           "lat": 52.5200,  "lon": 13.4050,   "status_id": 1},
+    {"id": 1005, "asn4": 7474,   "country_code": "AU", "tags": ["system-ipv4-stable-90d", "home"],   "lat": -33.8688, "lon": 151.2093,  "status_id": 1},
+    {"id": 1006, "asn4": 2516,   "country_code": "JP", "tags": ["system-ipv4-stable-90d"],           "lat": 35.6762,  "lon": 139.6503,  "status_id": 1},
+    {"id": 1007, "asn4": 8167,   "country_code": "BR", "tags": ["system-ipv4-stable-90d", "home"],   "lat": -23.5505, "lon": -46.6333,  "status_id": 1},
+    {"id": 1008, "asn4": 9829,   "country_code": "IN", "tags": ["system-ipv4-stable-90d"],           "lat": 28.6139,  "lon": 77.2090,   "status_id": 1},
+    {"id": 1009, "asn4": 5410,   "country_code": "FR", "tags": ["system-ipv4-stable-90d", "fibre"],  "lat": 48.8566,  "lon": 2.3522,    "status_id": 1},
+    {"id": 1010, "asn4": 1101,   "country_code": "NL", "tags": ["system-ipv4-stable-90d", "office"], "lat": 52.3676,  "lon": 4.9041,    "status_id": 1},
+    {"id": 1011, "asn4": 3758,   "country_code": "SG", "tags": ["system-ipv4-stable-90d"],           "lat": 1.3521,   "lon": 103.8198,  "status_id": 1},
+    {"id": 1012, "asn4": 577,    "country_code": "CA", "tags": ["system-ipv4-stable-90d", "home"],   "lat": 43.6532,  "lon": -79.3832,  "status_id": 1},
+    {"id": 1013, "asn4": 1257,   "country_code": "SE", "tags": ["system-ipv4-stable-90d", "fibre"],  "lat": 59.3293,  "lon": 18.0686,   "status_id": 1},
+    {"id": 1014, "asn4": 5713,   "country_code": "ZA", "tags": ["system-ipv4-stable-90d"],           "lat": -25.7461, "lon": 28.1881,   "status_id": 1},
+    {"id": 1015, "asn4": 7303,   "country_code": "AR", "tags": ["system-ipv4-stable-90d", "home"],   "lat": -34.6037, "lon": -58.3816,  "status_id": 1},
+    {"id": 9999, "asn4": 65000,  "country_code": "US", "tags": ["broken"],                           "lat": 39.0,     "lon": -77.0,     "status_id": 1}
+  ]
+}

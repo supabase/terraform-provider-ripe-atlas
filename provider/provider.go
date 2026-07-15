@@ -17,6 +17,12 @@ var _ provider.Provider = &ripeAtlasProvider{}
 
 type ripeAtlasProvider struct{}
 
+// providerClients holds both API clients passed to each resource.
+type providerClients struct {
+	apply *atlasapi.ApplyClient
+	msm   *atlasapi.MsmClient
+}
+
 func New() provider.Provider {
 	return &ripeAtlasProvider{}
 }
@@ -58,14 +64,25 @@ func (p *ripeAtlasProvider) Configure(ctx context.Context, req provider.Configur
 	}
 
 	codec := plan.NewTagCodec(plan.DefaultTagPrefix)
-	client, err := atlasapi.NewApplyClient(apiKey, false, codec)
+	verbose := os.Getenv("RIPE_ATLAS_DEBUG") != ""
+
+	applyClient, err := atlasapi.NewApplyClient(apiKey, verbose, codec)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to create RIPE Atlas client", err.Error())
+		resp.Diagnostics.AddError("Failed to create RIPE Atlas apply client", err.Error())
 		return
 	}
 
-	resp.ResourceData = client
-	resp.DataSourceData = client
+	msmClient, err := atlasapi.NewMsmClient(apiKey, verbose, codec)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to create RIPE Atlas measurement client", err.Error())
+		return
+	}
+
+	clients := &providerClients{
+		apply: applyClient,
+		msm:   msmClient,
+	}
+	resp.ResourceData = clients
 }
 
 func (p *ripeAtlasProvider) Resources(_ context.Context) []func() resource.Resource {
@@ -75,7 +92,5 @@ func (p *ripeAtlasProvider) Resources(_ context.Context) []func() resource.Resou
 }
 
 func (p *ripeAtlasProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{
-		NewProbeSelectionDataSource,
-	}
+	return []func() datasource.DataSource{}
 }
