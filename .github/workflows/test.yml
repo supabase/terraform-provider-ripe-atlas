@@ -10,6 +10,8 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    env:
+      GOWORK: off
 
     steps:
       - uses: actions/checkout@v4
