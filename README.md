@@ -1,6 +1,6 @@
 # terraform-provider-ripe-atlas
 
-A Terraform provider for [RIPE Atlas](https://atlas.ripe.net) measurements. It wraps the [atlasctl](https://github.com/supabase/atlasctl) domain library to bring RIPE Atlas measurement management into the Terraform resource model: declare your measurements and probe selections in configuration, preview changes before applying, and let Terraform track state.
+A Terraform provider for [RIPE Atlas](https://atlas.ripe.net) measurements. It wraps the [atlasctl](https://github.com/supabase/atlasctl) domain library to bring RIPE Atlas measurement management into the Terraform resource model: declare your measurements and probe selections in HCL, preview changes before applying, and let Terraform track state.
 
 ## Background
 
@@ -12,17 +12,35 @@ This provider is an adapter over the [atlasctl](https://github.com/supabase/atla
 
 ### `ripeatlas_measurement`
 
-One resource per RIPE Atlas measurement. Each maps to a single `(name, cohort)` pair and one measurement ID on the RIPE Atlas platform.
+One resource per RIPE Atlas measurement. Each maps to a single `(name, cohort)` pair and one measurement ID on the RIPE Atlas platform. Probe selection is declared via the `cohort` attribute: the provider reads a local `snapshot.json`, scores probes, and stores the selected set in state. Because `cohort` is an attribute (not a block), cohort configs can be defined as locals and shared across multiple measurement resources.
 
 ```hcl
+locals {
+  high_freq = {
+    name                = "high-freq"
+    probe_count         = 30
+    max_probes_per_cell = 1
+    interval_seconds    = 60
+    include_probe_ids   = [1001]
+    exclude_probe_ids   = [9999]
+    cfg = {
+      asn       = { "7018" = 10, "7922" = 8 }
+      tags      = { "office" = 5, "fibre" = 2 }
+      stability = { "system-ipv4-stable-90d" = 5 }
+    }
+  }
+}
+
 resource "ripeatlas_measurement" "dns_canary_high" {
-  name             = "dns-canary"
-  cohort           = "high-freq"
-  target           = "canary.example.com"
-  msm_type         = "dns"
-  af               = 4
-  interval_seconds = 60
-  probe_ids        = [1001, 2002, 3003]
+  name     = "dns-canary"
+  target   = "canary.example.com"
+  msm_type = "dns"
+  af       = 4
+  snapshot = "${path.module}/snapshot.json"
+
+  exclude_tags = ["broken", "system-flakey-connection"]
+
+  cohort = local.high_freq
 }
 
 output "msm_id" {
@@ -32,105 +50,42 @@ output "msm_id" {
 
 **Inputs**
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `name` | string | Logical measurement name. Immutable. |
-| `cohort` | string | Probe group name. Immutable. |
-| `target` | string | DNS name or IP address. Immutable. |
-| `msm_type` | string | `dns`, `ping`, `tls`, or `traceroute`. Immutable. |
-| `af` | number | Address family: `4` or `6`. Default `4`. Immutable. |
-| `interval_seconds` | number | Measurement interval in seconds (minimum 60). Immutable. |
-| `probe_ids` | set(number) | RIPE Atlas probe IDs. Mutable in place. |
+| Attribute | Type | Immutable | Description |
+|-----------|------|-----------|-------------|
+| `name` | string | yes | Logical measurement name. |
+| `target` | string | yes | DNS name or IP address. |
+| `msm_type` | string | yes | `dns`, `ping`, `tls`, or `traceroute`. |
+| `af` | number | yes | Address family: `4` or `6`. Default `4`. |
+| `snapshot` | string | no | Path to `snapshot.json` from `atlasctl refresh`. |
+| `exclude_tags` | list(string) | no | Probe tags that hard-exclude a probe from selection. |
+| `cohort.name` | string | yes | Cohort tier name. |
+| `cohort.probe_count` | number | no | Number of probes to select. |
+| `cohort.max_probes_per_cell` | number | no | Maximum probes per H3 geographic cell. |
+| `cohort.interval_seconds` | number | yes | Measurement interval in seconds (minimum 60). |
+| `cohort.include_probe_ids` | set(number) | no | Probes always included regardless of scoring. |
+| `cohort.exclude_probe_ids` | set(number) | no | Probes never selected in this cohort. |
+| `cohort.cfg.asn` | map(number) | no | Score bonuses by ASN (string key). |
+| `cohort.cfg.tags` | map(number) | no | Score bonuses by probe tag string. |
+| `cohort.cfg.countries` | map(number) | no | Score bonuses by ISO 3166-1 alpha-2 country code. |
+| `cohort.cfg.stability` | map(number) | no | Score bonuses by RIPE Atlas stability tag. |
 
-Changing any immutable attribute stops the old measurement and creates a new one. Changing `probe_ids` adds or removes participants on the running measurement without recreating it.
+Changing any immutable attribute stops the old measurement and creates a new one. Changing mutable attributes re-runs probe selection on the next plan. The resulting `probe_ids` diff drives `AddParticipants` or `RemoveParticipants` on the running measurement without recreating it.
 
 **Outputs**
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `msm_id` | number | RIPE Atlas measurement ID assigned at creation. |
-
----
-
-### `ripeatlas_probe_selection` (data source)
-
-Runs the atlasctl probe selection algorithm during `terraform plan` and makes the results available as data. Cohort definitions, scoring weights, exclude tags, and geographic diversity are all read from an `atlasctl.yaml` config file.
-
-`atlasctl.yaml`:
-
-```yaml
-cohorts:
-  - name: high-freq
-    count: 30
-    max_probes_per_cell: 1
-  - name: low-freq
-    count: 100
-    max_probes_per_cell: 3
-
-scoring:
-  asn:
-    7018: 10   # AT&T
-    7922: 8    # Comcast
-  tags:
-    office: 5
-    fibre: 2
-  stability:
-    system-ipv4-stable-90d: 5
-
-exclude_tags:
-  - broken
-  - system-flakey-connection
-```
-
-`main.tf`:
-
-```hcl
-data "ripeatlas_probe_selection" "selected" {
-  snapshot = "${path.module}/snapshot.json"
-  config   = "${path.module}/atlasctl.yaml"
-}
-
-resource "ripeatlas_measurement" "dns_canary_high" {
-  name             = "dns-canary"
-  cohort           = "high-freq"
-  target           = "canary.example.com"
-  msm_type         = "dns"
-  interval_seconds = 60
-  probe_ids        = data.ripeatlas_probe_selection.selected.probe_ids["high-freq"]
-}
-
-resource "ripeatlas_measurement" "dns_canary_low" {
-  name             = "dns-canary"
-  cohort           = "low-freq"
-  target           = "canary.example.com"
-  msm_type         = "dns"
-  interval_seconds = 900
-  probe_ids        = data.ripeatlas_probe_selection.selected.probe_ids["low-freq"]
-}
-```
-
-The data source reads only the `cohorts`, `scoring`, and `exclude_tags` stanzas from `atlasctl.yaml`. Any `measurements` stanzas in the file are ignored. Measurements are declared as `ripeatlas_measurement` resources in HCL instead.
-
-**Inputs**
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `snapshot` | string | Path to a local `snapshot.json` produced by `atlasctl refresh`. |
-| `config` | string | Path to `atlasctl.yaml`. |
-
-**Outputs**
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `probe_ids` | map(set(number)) | Probe IDs per cohort name. |
+| `probe_ids` | set(number) | Probe IDs selected and participating in the measurement. |
 
 ## Probe selection
 
-The `ripeatlas_probe_selection` data source runs selection locally using the snapshot on disk. Update the snapshot before planning to pick up probe pool changes:
+The provider runs probe selection locally during `terraform plan`. Update the snapshot before planning to pick up probe pool changes:
 
 ```bash
 atlasctl refresh   # fetch connected probes from the RIPE Atlas API
-terraform plan     # selection runs here, probe IDs propagate to measurements
+terraform plan     # selection runs here, probe_ids is computed
+terraform apply
 ```
 
 Selection uses scoring bands, continental interleaving, and H3-based geographic diversity. The [atlasctl probe selection docs](https://github.com/supabase/atlasctl/blob/main/README.md#probe-selection) cover the algorithm in full.

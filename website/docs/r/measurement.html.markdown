@@ -10,54 +10,96 @@ description: |-
 
 Creates and manages a single RIPE Atlas measurement. Each resource maps to one `(name, cohort)` pair and one measurement ID on the RIPE Atlas platform.
 
-Structural attributes (`name`, `cohort`, `target`, `msm_type`, `af`, `interval_seconds`) are immutable. Changing any of them destroys the old measurement and creates a new one. `probe_ids` is mutable in place: changing the set adds or removes probe participants on the running measurement without recreating it.
+Probe selection is declared directly in the resource using the `cohort` block. The provider reads a local `snapshot.json` produced by `atlasctl refresh`, scores and filters probes according to the cohort configuration, and stores the selected probe IDs in state.
+
+Immutable attributes (`name`, `target`, `msm_type`, `af`, `cohort.name`, `cohort.interval_seconds`) trigger replacement when changed. All other attributes are mutable in place: changes to `snapshot`, `exclude_tags`, or cohort selection fields re-run probe selection on the next plan, and the resulting diff drives `AddParticipants` or `RemoveParticipants` on the running measurement without recreating it.
 
 ## Example Usage
 
 ```hcl
-data "ripeatlas_probe_selection" "selected" {
-  snapshot = "${path.module}/snapshot.json"
-  config   = "${path.module}/atlasctl.yaml"
-}
-
 resource "ripeatlas_measurement" "dns_canary_high" {
-  name             = "dns-canary"
-  cohort           = "high-freq"
-  target           = "canary.example.com"
-  msm_type         = "dns"
-  af               = 4
-  interval_seconds = 60
-  probe_ids        = data.ripeatlas_probe_selection.selected.probe_ids["high-freq"]
+  name     = "dns-canary"
+  target   = "canary.example.com"
+  msm_type = "dns"
+  af       = 4
+  snapshot = "${path.module}/snapshot.json"
+
+  exclude_tags = ["broken", "system-flakey-connection"]
+
+  cohort = {
+    name                = "high-freq"
+    probe_count         = 30
+    max_probes_per_cell = 1
+    interval_seconds    = 60
+    include_probe_ids   = [1001]
+    exclude_probe_ids   = [9999]
+
+    cfg = {
+      asn       = { "7018" = 10, "7922" = 8 }
+      tags      = { "office" = 5, "fibre" = 2 }
+      stability = { "system-ipv4-stable-90d" = 5 }
+    }
+  }
 }
 
 output "msm_id" {
   value = ripeatlas_measurement.dns_canary_high.msm_id
 }
+
+output "probe_ids" {
+  value = ripeatlas_measurement.dns_canary_high.probe_ids
+}
 ```
 
 ## Argument Reference
 
-The following arguments are supported:
+### Resource-level
 
-* `name` - (Required, Forces new resource) Logical measurement name, for example `dns-canary`. Used together with `cohort` to identify the measurement within atlasctl state.
+* `name` - (Required, Forces new resource) Measurement name. Combined with `cohort.name` as the atlasctl identity key.
 
-* `cohort` - (Required, Forces new resource) Probe group name, for example `high-freq`. Must match a cohort name defined in `atlasctl.yaml` when probe IDs come from the `ripeatlas_probe_selection` data source.
-
-* `target` - (Required, Forces new resource) The measurement target. A DNS name or IP address depending on `msm_type`.
+* `target` - (Required, Forces new resource) DNS name or IP address for the measurement target.
 
 * `msm_type` - (Required, Forces new resource) Measurement type. One of `dns`, `ping`, `tls`, or `traceroute`.
 
-* `interval_seconds` - (Required, Forces new resource) Measurement interval in seconds. Minimum value is `60`. All measurements created by this provider are periodic.
-
-* `probe_ids` - (Required) Set of RIPE Atlas probe IDs to include in the measurement. This attribute is mutable: adding or removing probe IDs calls `AddParticipants` or `RemoveParticipants` on the running measurement rather than recreating it.
+* `snapshot` - (Required) Path to a `snapshot.json` produced by `atlasctl refresh`. Updated on each plan to pick up probe pool changes.
 
 * `af` - (Optional, Forces new resource) Address family. `4` for IPv4, `6` for IPv6. Defaults to `4`.
 
+* `exclude_tags` - (Optional) List of probe tags that hard-exclude a probe from selection. A probe carrying any listed tag is never selected.
+
+### `cohort` block (required, exactly one)
+
+* `name` - (Required, Forces new resource) Cohort tier name, for example `high-freq`.
+
+* `probe_count` - (Required) Number of probes to select.
+
+* `max_probes_per_cell` - (Required) Maximum probes per H3 geographic cell.
+
+* `interval_seconds` - (Required, Forces new resource) Measurement interval in seconds. Minimum `60`.
+
+* `include_probe_ids` - (Optional) Set of probe IDs always included in the cohort, regardless of scoring or the H3 cell cap.
+
+* `exclude_probe_ids` - (Optional) Set of probe IDs never selected in this cohort.
+
+### `cohort.cfg` block (optional)
+
+Additive scoring weights applied on top of each probe's base score of 1. A probe matching multiple criteria accumulates all matching scores.
+
+* `asn` - (Optional) Map of ASN (string key) to score bonus.
+
+* `tags` - (Optional) Map of probe tag string to score bonus.
+
+* `countries` - (Optional) Map of ISO 3166-1 alpha-2 country code to score bonus.
+
+* `stability` - (Optional) Map of RIPE Atlas stability tag to score bonus.
+
 ## Attributes Reference
 
-In addition to the arguments above, the following attributes are exported:
+In addition to the arguments above, the following computed attributes are exported:
 
 * `msm_id` - The RIPE Atlas measurement ID assigned at creation. Stable for the lifetime of the resource.
+
+* `probe_ids` - Set of probe IDs selected and participating in the measurement. Computed from probe selection at plan time.
 
 ## Credit Costs
 
