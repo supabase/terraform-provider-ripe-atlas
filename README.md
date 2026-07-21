@@ -12,39 +12,47 @@ This provider is an adapter over the [atlasctl](https://github.com/supabase/atla
 
 ### `ripeatlas_measurement`
 
-One resource per RIPE Atlas measurement. Each maps to a single `(name, cohort)` pair and one measurement ID on the RIPE Atlas platform. Probe selection is declared via the `cohort` attribute: the provider reads a local `snapshot.json`, scores probes, and stores the selected set in state. Because `cohort` is an attribute (not a block), cohort configs can be defined as locals and shared across multiple measurement resources.
+One resource holds one or more cohorts. Each cohort creates exactly one RIPE Atlas measurement ID. Cohort ordering in the list determines probe selection priority: probes selected for cohort N are excluded from cohort N+1, so successive cohorts draw from a diminishing pool. This drawdown is what enables geographically diverse, non-overlapping probe sets across measurement tiers.
 
 ```hcl
-locals {
-  high_freq = {
-    name                = "high-freq"
-    probe_count         = 30
-    max_probes_per_cell = 1
-    interval_seconds    = 60
-    include_probe_ids   = [1001]
-    exclude_probe_ids   = [9999]
-    cfg = {
-      asn       = { "7018" = 10, "7922" = 8 }
-      tags      = { "office" = 5, "fibre" = 2 }
-      stability = { "system-ipv4-stable-90d" = 5 }
-    }
-  }
+provider "ripeatlas" {
+  # api_key  = "..."  # or set RIPE_ATLAS_API_KEY
+  # snapshot = "..."  # or set RIPE_ATLAS_SNAPSHOT
 }
 
-resource "ripeatlas_measurement" "dns_canary_high" {
+resource "ripeatlas_measurement" "dns_canary" {
   name     = "dns-canary"
   target   = "canary.example.com"
   msm_type = "dns"
   af       = 4
-  snapshot = "${path.module}/snapshot.json"
 
   exclude_tags = ["broken", "system-flakey-connection"]
 
-  cohort = local.high_freq
+  cohorts = [
+    {
+      name                = "high-freq"
+      probe_count         = 30
+      max_probes_per_cell = 1
+      interval_seconds    = 60
+      include_probe_ids   = [1001]
+      exclude_probe_ids   = [9999]
+      cfg = {
+        asn       = { "7018" = 10, "7922" = 8 }
+        tags      = { "office" = 5, "fibre" = 2 }
+        stability = { "system-ipv4-stable-90d" = 5 }
+      }
+    },
+    {
+      name                = "low-freq"
+      probe_count         = 100
+      max_probes_per_cell = 2
+      interval_seconds    = 3600
+    },
+  ]
 }
 
-output "msm_id" {
-  value = ripeatlas_measurement.dns_canary_high.msm_id
+output "msm_ids" {
+  value = [for c in ripeatlas_measurement.dns_canary.cohorts : c.msm_id]
 }
 ```
 
@@ -56,27 +64,26 @@ output "msm_id" {
 | `target` | string | yes | DNS name or IP address. |
 | `msm_type` | string | yes | `dns`, `ping`, `tls`, or `traceroute`. |
 | `af` | number | yes | Address family: `4` or `6`. Default `4`. |
-| `snapshot` | string | no | Path to `snapshot.json` from `atlasctl refresh`. |
 | `exclude_tags` | list(string) | no | Probe tags that hard-exclude a probe from selection. |
-| `cohort.name` | string | yes | Cohort tier name. |
-| `cohort.probe_count` | number | no | Number of probes to select. |
-| `cohort.max_probes_per_cell` | number | no | Maximum probes per H3 geographic cell. |
-| `cohort.interval_seconds` | number | yes | Measurement interval in seconds (minimum 60). |
-| `cohort.include_probe_ids` | set(number) | no | Probes always included regardless of scoring. |
-| `cohort.exclude_probe_ids` | set(number) | no | Probes never selected in this cohort. |
-| `cohort.cfg.asn` | map(number) | no | Score bonuses by ASN (string key). |
-| `cohort.cfg.tags` | map(number) | no | Score bonuses by probe tag string. |
-| `cohort.cfg.countries` | map(number) | no | Score bonuses by ISO 3166-1 alpha-2 country code. |
-| `cohort.cfg.stability` | map(number) | no | Score bonuses by RIPE Atlas stability tag. |
+| `cohorts[*].name` | string | yes | Cohort tier name. |
+| `cohorts[*].probe_count` | number | yes | Number of probes to select. |
+| `cohorts[*].max_probes_per_cell` | number | yes | Maximum probes per H3 geographic cell. |
+| `cohorts[*].interval_seconds` | number | yes | Measurement interval in seconds (minimum 60). |
+| `cohorts[*].include_probe_ids` | set(number) | no | Probes always included regardless of scoring. |
+| `cohorts[*].exclude_probe_ids` | set(number) | no | Probes never selected in this cohort. |
+| `cohorts[*].cfg.asn` | map(number) | no | Score bonuses by ASN (string key). |
+| `cohorts[*].cfg.tags` | map(number) | no | Score bonuses by probe tag string. |
+| `cohorts[*].cfg.countries` | map(number) | no | Score bonuses by ISO 3166-1 alpha-2 country code. |
+| `cohorts[*].cfg.stability` | map(number) | no | Score bonuses by RIPE Atlas stability tag. |
 
-Changing any immutable attribute stops the old measurement and creates a new one. Changing mutable attributes re-runs probe selection on the next plan. The resulting `probe_ids` diff drives `AddParticipants` or `RemoveParticipants` on the running measurement without recreating it.
+Changing any immutable attribute stops the old measurement and creates a new one. Adding or removing a cohort creates or stops only the affected measurement. Changes to `exclude_tags` or cohort scoring fields re-run probe selection on the next plan; the resulting `probe_ids` diff drives `AddParticipants` or `RemoveParticipants` without recreating the measurement.
 
-**Outputs**
+**Computed outputs (per cohort)**
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `msm_id` | number | RIPE Atlas measurement ID assigned at creation. |
-| `probe_ids` | set(number) | Probe IDs selected and participating in the measurement. |
+| `cohorts[*].msm_id` | number | RIPE Atlas measurement ID assigned at creation. |
+| `cohorts[*].probe_ids` | set(number) | Probe IDs selected and participating in the measurement. |
 
 ## Probe selection
 
@@ -95,19 +102,20 @@ Selection uses scoring bands, continental interleaving, and H3-based geographic 
 ```hcl
 terraform {
   required_providers {
-    ripe-atlas = {
+    ripeatlas = {
       source  = "supabase/ripe-atlas"
       version = "~> 0.1"
     }
   }
 }
 
-provider "ripe-atlas" {
-  # api_key = "..."  # or set RIPE_ATLAS_API_KEY
+provider "ripeatlas" {
+  # api_key  = "..."  # or set RIPE_ATLAS_API_KEY
+  # snapshot = "..."  # or set RIPE_ATLAS_SNAPSHOT
 }
 ```
 
-`api_key` is marked sensitive and never appears in plain text in Terraform state.
+`api_key` is marked sensitive and never appears in plain text in Terraform state. `snapshot` is the path to a `snapshot.json` produced by `atlasctl refresh`.
 
 ### Required API key permissions
 

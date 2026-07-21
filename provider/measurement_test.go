@@ -41,9 +41,9 @@ func int64Val(n int64) types.Int64  { return types.Int64Value(n) }
 func nullList() types.List          { return types.ListValueMust(types.StringType, []attr.Value{}) }
 func nullSet() types.Set            { return types.SetValueMust(types.Int64Type, []attr.Value{}) }
 
-func validCohort(t *testing.T) *cohortModel {
+func validCohort(t *testing.T) cohortModel {
 	t.Helper()
-	return &cohortModel{
+	return cohortModel{
 		Name:             strVal("default"),
 		ProbeCount:       int64Val(5),
 		MaxProbesPerCell: int64Val(2),
@@ -60,11 +60,8 @@ func validDNSModel(t *testing.T) measurementModel {
 		Target:      strVal("example.com"),
 		MsmType:     strVal("dns"),
 		AF:          int64Val(4),
-		Snapshot:    strVal(snapshotPath(t)),
 		ExcludeTags: nullList(),
-		Cohort:      validCohort(t),
-		MsmID:       types.Int64Unknown(),
-		ProbeIDs:    types.SetUnknown(types.Int64Type),
+		Cohorts:     []cohortModel{validCohort(t)},
 	}
 }
 
@@ -127,7 +124,7 @@ func TestValidateMeasurement_EmptyTarget(t *testing.T) {
 
 func TestValidateMeasurement_IntervalTooLow(t *testing.T) {
 	m := validDNSModel(t)
-	m.Cohort.IntervalSeconds = int64Val(30)
+	m.Cohorts[0].IntervalSeconds = int64Val(30)
 	if !hasError(validateMeasurement(m), "interval_seconds") {
 		t.Error("expected interval_seconds error")
 	}
@@ -135,7 +132,7 @@ func TestValidateMeasurement_IntervalTooLow(t *testing.T) {
 
 func TestValidateMeasurement_IntervalAtMinimum(t *testing.T) {
 	m := validDNSModel(t)
-	m.Cohort.IntervalSeconds = int64Val(60)
+	m.Cohorts[0].IntervalSeconds = int64Val(60)
 	if diags := validateMeasurement(m); diags.HasError() {
 		t.Errorf("interval_seconds=60 should be valid, got: %v", diags)
 	}
@@ -143,7 +140,7 @@ func TestValidateMeasurement_IntervalAtMinimum(t *testing.T) {
 
 func TestValidateMeasurement_ZeroProbeCount(t *testing.T) {
 	m := validDNSModel(t)
-	m.Cohort.ProbeCount = int64Val(0)
+	m.Cohorts[0].ProbeCount = int64Val(0)
 	if !hasError(validateMeasurement(m), "probe_count") {
 		t.Error("expected probe_count error")
 	}
@@ -151,7 +148,7 @@ func TestValidateMeasurement_ZeroProbeCount(t *testing.T) {
 
 func TestValidateMeasurement_ZeroMaxProbesPerCell(t *testing.T) {
 	m := validDNSModel(t)
-	m.Cohort.MaxProbesPerCell = int64Val(0)
+	m.Cohorts[0].MaxProbesPerCell = int64Val(0)
 	if !hasError(validateMeasurement(m), "max_probes_per_cell") {
 		t.Error("expected max_probes_per_cell error")
 	}
@@ -221,15 +218,19 @@ func TestValidateMsmSpec_EmptyTarget_NonDNS(t *testing.T) {
 
 func TestRunSelection_ValidDNS(t *testing.T) {
 	m := validDNSModel(t)
-	ids, err := runSelection(context.Background(), m)
+	selected, err := runSelection(context.Background(), snapshotPath(t), m)
 	if err != nil {
 		t.Fatalf("runSelection: %v", err)
 	}
+	if len(selected) == 0 {
+		t.Fatal("expected at least one selected cohort")
+	}
+	ids := cohortProbeIDs(selected[0])
 	if len(ids) == 0 {
 		t.Error("expected non-empty probe IDs")
 	}
-	if len(ids) > int(m.Cohort.ProbeCount.ValueInt64()) {
-		t.Errorf("got %d IDs, want <= %d", len(ids), m.Cohort.ProbeCount.ValueInt64())
+	if len(ids) > int(m.Cohorts[0].ProbeCount.ValueInt64()) {
+		t.Errorf("got %d IDs, want <= %d", len(ids), m.Cohorts[0].ProbeCount.ValueInt64())
 	}
 }
 
@@ -240,11 +241,11 @@ func TestRunSelection_ExcludeTagsApplied(t *testing.T) {
 	m.ExcludeTags = types.ListValueMust(types.StringType, []attr.Value{
 		types.StringValue("broken"),
 	})
-	ids, err := runSelection(context.Background(), m)
+	selected, err := runSelection(context.Background(), snapshotPath(t), m)
 	if err != nil {
 		t.Fatalf("runSelection: %v", err)
 	}
-	for _, id := range ids {
+	for _, id := range cohortProbeIDs(selected[0]) {
 		if id == 9999 {
 			t.Error("excluded probe 9999 appeared in selection")
 		}
@@ -253,15 +254,15 @@ func TestRunSelection_ExcludeTagsApplied(t *testing.T) {
 
 func TestRunSelection_IncludeProbeIDsHonored(t *testing.T) {
 	m := validDNSModel(t)
-	m.Cohort.IncludeProbeIDs = types.SetValueMust(types.Int64Type, []attr.Value{
+	m.Cohorts[0].IncludeProbeIDs = types.SetValueMust(types.Int64Type, []attr.Value{
 		types.Int64Value(1001),
 	})
-	ids, err := runSelection(context.Background(), m)
+	selected, err := runSelection(context.Background(), snapshotPath(t), m)
 	if err != nil {
 		t.Fatalf("runSelection: %v", err)
 	}
 	found := false
-	for _, id := range ids {
+	for _, id := range cohortProbeIDs(selected[0]) {
 		if id == 1001 {
 			found = true
 			break
@@ -274,9 +275,49 @@ func TestRunSelection_IncludeProbeIDsHonored(t *testing.T) {
 
 func TestRunSelection_MissingSnapshot(t *testing.T) {
 	m := validDNSModel(t)
-	m.Snapshot = strVal("/nonexistent/snapshot.json")
-	if _, err := runSelection(context.Background(), m); err == nil {
+	if _, err := runSelection(context.Background(), "/nonexistent/snapshot.json", m); err == nil {
 		t.Error("expected error for missing snapshot")
+	}
+}
+
+func TestRunSelection_DrawdownAcrossCohorts(t *testing.T) {
+	// Two cohorts requesting the same probes. The second cohort must not overlap
+	// with the first — the drawdown in selection.Select enforces this.
+	m := validDNSModel(t)
+	m.Cohorts = []cohortModel{
+		{
+			Name:            strVal("first"),
+			ProbeCount:      int64Val(3),
+			MaxProbesPerCell: int64Val(2),
+			IntervalSeconds: int64Val(60),
+			IncludeProbeIDs: nullSet(),
+			ExcludeProbeIDs: nullSet(),
+		},
+		{
+			Name:            strVal("second"),
+			ProbeCount:      int64Val(3),
+			MaxProbesPerCell: int64Val(2),
+			IntervalSeconds: int64Val(60),
+			IncludeProbeIDs: nullSet(),
+			ExcludeProbeIDs: nullSet(),
+		},
+	}
+	selected, err := runSelection(context.Background(), snapshotPath(t), m)
+	if err != nil {
+		t.Fatalf("runSelection: %v", err)
+	}
+	if len(selected) != 2 {
+		t.Fatalf("expected 2 selected cohorts, got %d", len(selected))
+	}
+
+	first := make(map[uint32]struct{})
+	for _, id := range cohortProbeIDs(selected[0]) {
+		first[id] = struct{}{}
+	}
+	for _, id := range cohortProbeIDs(selected[1]) {
+		if _, overlap := first[id]; overlap {
+			t.Errorf("probe %d appears in both cohorts — drawdown is broken", id)
+		}
 	}
 }
 
