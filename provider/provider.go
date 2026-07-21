@@ -17,10 +17,11 @@ var _ provider.Provider = &ripeAtlasProvider{}
 
 type ripeAtlasProvider struct{}
 
-// providerClients holds both API clients passed to each resource.
+// providerClients holds API clients and shared config passed to each resource.
 type providerClients struct {
-	apply *atlasapi.ApplyClient
-	msm   *atlasapi.MsmClient
+	apply    *atlasapi.ApplyClient
+	msm      *atlasapi.MsmClient
+	snapshot string
 }
 
 func New() provider.Provider {
@@ -38,12 +39,17 @@ func (p *ripeAtlasProvider) Schema(_ context.Context, _ provider.SchemaRequest, 
 				Optional:  true,
 				Sensitive: true,
 			},
+			"snapshot": schema.StringAttribute{
+				Optional:    true,
+				Description: "Path to the probe snapshot JSON file. Falls back to RIPE_ATLAS_SNAPSHOT env var.",
+			},
 		},
 	}
 }
 
 type providerModel struct {
-	APIKey types.String `tfsdk:"api_key"`
+	APIKey   types.String `tfsdk:"api_key"`
+	Snapshot types.String `tfsdk:"snapshot"`
 }
 
 func (p *ripeAtlasProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
@@ -63,6 +69,16 @@ func (p *ripeAtlasProvider) Configure(ctx context.Context, req provider.Configur
 		return
 	}
 
+	snapshotPath := config.Snapshot.ValueString()
+	if snapshotPath == "" {
+		snapshotPath = os.Getenv("RIPE_ATLAS_SNAPSHOT")
+	}
+	if snapshotPath == "" {
+		resp.Diagnostics.AddError("Missing snapshot",
+			"Set snapshot in provider config or RIPE_ATLAS_SNAPSHOT environment variable.")
+		return
+	}
+
 	codec := plan.NewTagCodec(plan.DefaultTagPrefix)
 	verbose := os.Getenv("RIPE_ATLAS_DEBUG") != ""
 
@@ -79,8 +95,9 @@ func (p *ripeAtlasProvider) Configure(ctx context.Context, req provider.Configur
 	}
 
 	clients := &providerClients{
-		apply: applyClient,
-		msm:   msmClient,
+		apply:    applyClient,
+		msm:      msmClient,
+		snapshot: snapshotPath,
 	}
 	resp.ResourceData = clients
 }
