@@ -1,27 +1,32 @@
 terraform {
   required_providers {
-    ripe-atlas = {
+    ripeatlas = {
       source  = "supabase/ripe-atlas"
       version = "~> 0.1"
     }
   }
 }
 
-provider "ripe-atlas" {
-  # api_key = "..."  # or set RIPE_ATLAS_API_KEY
+provider "ripeatlas" {
+  # api_key    = "..."  # or set RIPE_ATLAS_API_KEY
+  # snapshot   = "..."  # or set RIPE_ATLAS_SNAPSHOT
+  # tag_prefix = "..."  # optional; distinguishes measurements across states/workspaces
 }
 
-data "ripe_atlas_probe_selection" "selected" {
-  snapshot = "${path.module}/snapshot.json"
-  config   = "${path.module}/atlasctl.yaml"
-}
+resource "ripeatlas_measurement" "dns_canary" {
+  name     = "dns-canary"
+  target   = "canary.example.com"
+  msm_type = "dns"
+  af       = 4
 
-resource "ripe_atlas_measurement" "dns_canary" {
-  name             = "dns-canary"
-  cohort           = "high-freq"
-  target           = "canary.example.com"
-  msm_type         = "dns"
-  af               = 4
-  interval_seconds = 60
-  probe_ids        = data.ripe_atlas_probe_selection.selected.probe_ids["high-freq"]
+  exclude_tags = ["broken", "system-flakey-connection"]
+
+  cohorts = [
+    {
+      name                = "high-freq"
+      probe_count         = 30
+      max_probes_per_cell = 1
+      interval_seconds    = 60
+    },
+  ]
 }
