@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
-	github.com/supabase/atlasctl v0.1.2
+	github.com/supabase/atlasctl v0.1.3
 )
 
 require (
