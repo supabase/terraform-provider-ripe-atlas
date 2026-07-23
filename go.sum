@@ -77,8 +77,8 @@ github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/
 github.com/stretchr/testify v1.7.2/go.mod h1:R6va5+xMeoiuVRoj+gSkQ7d3FALtqAAGI1FQKckRals=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/supabase/atlasctl v0.1.2 h1:dGqjxD5Q2hNVtVcBFue9U11LETHs2K2IWdA5KPXT50k=
-github.com/supabase/atlasctl v0.1.2/go.mod h1:eBokKZHdtMrx6Yw2H4hkngVfCj/OFLpyzbrbCOy7KKU=
+github.com/supabase/atlasctl v0.1.3 h1:sd6bRkPN3IbZUoP34XuvdVKmRsQ4/gl+hFH9qEhpYc8=
+github.com/supabase/atlasctl v0.1.3/go.mod h1:eBokKZHdtMrx6Yw2H4hkngVfCj/OFLpyzbrbCOy7KKU=
 github.com/uber/h3-go/v4 v4.0.1 h1:eOcQXs+eC9Vmil0ZWicPYwSVfgwkPlMyk6Udm/kdv8w=
 github.com/uber/h3-go/v4 v4.0.1/go.mod h1:VDpXVn4NLetBoISLEbiTVNstwW00bhHolV8I+jx9G+4=
 github.com/vmihailenco/msgpack/v5 v5.4.1 h1:cQriyiUvjTwOHg8QZaPihLWeRAAVoCpE00IUPn0Bjt8=

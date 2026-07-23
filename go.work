@@ -5,4 +5,4 @@ use (
 	../atlasctl
 )
 
-replace github.com/supabase/atlasctl v0.1.1 => ../atlasctl
+replace github.com/supabase/atlasctl v0.1.3 => ../atlasctl
