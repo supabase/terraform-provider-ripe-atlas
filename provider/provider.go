@@ -43,9 +43,9 @@ func (p *ripeAtlasProvider) Schema(_ context.Context, _ provider.SchemaRequest, 
 				Optional:    true,
 				Description: "Path to the probe snapshot JSON file. Falls back to RIPE_ATLAS_SNAPSHOT env var.",
 			},
-			"tag_prefix": schema.StringAttribute{
+			"namespace": schema.StringAttribute{
 				Optional:    true,
-				Description: "Identifier to store on each measurement in the RIPE API. Use for differentiating terraform states",
+				Description: "Namespace embedded in each measurement description on the RIPE Atlas API. Used to distinguish measurements across Terraform states or workspaces. Defaults to \"terraform-provider-ripe-atlas\".",
 			},
 		},
 	}
@@ -54,7 +54,7 @@ func (p *ripeAtlasProvider) Schema(_ context.Context, _ provider.SchemaRequest, 
 type providerModel struct {
 	APIKey    types.String `tfsdk:"api_key"`
 	Snapshot  types.String `tfsdk:"snapshot"`
-	TagPrefix types.String `tfsdk:"tag_prefix"`
+	Namespace types.String `tfsdk:"namespace"`
 }
 
 func (p *ripeAtlasProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
@@ -84,11 +84,11 @@ func (p *ripeAtlasProvider) Configure(ctx context.Context, req provider.Configur
 		return
 	}
 
-	tagPref := config.TagPrefix.ValueString()
-	if tagPref == "" {
-		tagPref = plan.DefaultTagPrefix
+	namespace := config.Namespace.ValueString()
+	if namespace == "" {
+		namespace = "terraform-provider-ripe-atlas"
 	}
-	codec := plan.NewTagCodec(tagPref)
+	codec := plan.NewTagCodec(namespace)
 	verbose := os.Getenv("RIPE_ATLAS_DEBUG") != ""
 
 	applyClient, err := atlasapi.NewApplyClient(apiKey, verbose, codec)
