@@ -115,13 +115,13 @@ The `ripeatlas` provider accepts the following arguments:
 
 * `snapshot` - (Optional) Path to `snapshot.json` produced by `atlasctl refresh`. Falls back to `RIPE_ATLAS_SNAPSHOT` environment variable.
 
-* `tag_prefix` - (Optional) Identifier embedded in each measurement description on the RIPE Atlas API. Used to distinguish measurements created by different Terraform states or workspaces. Defaults to the atlasctl tag prefix.
+* `namespace` - (Optional) Identifier embedded in each measurement description on the RIPE Atlas API. Used to distinguish measurements created by different Terraform states or workspaces. Defaults to `terraform-provider-ripe-atlas`.
 
 ```hcl
 provider "ripeatlas" {
   # api_key    = "..."  # or set RIPE_ATLAS_API_KEY
   # snapshot   = "..."  # or set RIPE_ATLAS_SNAPSHOT
-  # tag_prefix = "..."  # optional
+  # namespace = "..."  # optional
 }
 ```
 

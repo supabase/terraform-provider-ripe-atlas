@@ -10,7 +10,7 @@ terraform {
 provider "ripeatlas" {
   # api_key    = "..."  # or set RIPE_ATLAS_API_KEY
   # snapshot   = "..."  # or set RIPE_ATLAS_SNAPSHOT
-  # tag_prefix = "..."  # optional; distinguishes measurements across states/workspaces
+  # namespace = "..."  # optional; distinguishes measurements across states/workspaces
 }
 
 resource "ripeatlas_measurement" "dns_canary" {

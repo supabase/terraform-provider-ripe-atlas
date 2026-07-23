@@ -18,7 +18,7 @@ One resource holds one or more cohorts. Each cohort creates exactly one RIPE Atl
 provider "ripeatlas" {
   # api_key    = "..."  # or set RIPE_ATLAS_API_KEY
   # snapshot   = "..."  # or set RIPE_ATLAS_SNAPSHOT
-  # tag_prefix = "..."  # optional
+  # namespace = "..."  # optional
 }
 
 resource "ripeatlas_measurement" "dns_canary" {
@@ -113,7 +113,7 @@ terraform {
 provider "ripeatlas" {
   # api_key    = "..."  # or set RIPE_ATLAS_API_KEY
   # snapshot   = "..."  # or set RIPE_ATLAS_SNAPSHOT
-  # tag_prefix = "..."  # optional, default is the atlasctl tag prefix
+  # namespace = "..."  # optional, default is the atlasctl tag prefix
 }
 ```
 
@@ -121,7 +121,7 @@ provider "ripeatlas" {
 |-----------|-------------|
 | `api_key` | RIPE Atlas API key. Sensitive; never appears in plain text in state. Falls back to `RIPE_ATLAS_API_KEY`. |
 | `snapshot` | Path to `snapshot.json` produced by `atlasctl refresh`. Falls back to `RIPE_ATLAS_SNAPSHOT`. |
-| `tag_prefix` | Identifier embedded in each measurement description on the RIPE Atlas API. Used to distinguish measurements created by different Terraform states or workspaces. Optional; defaults to the atlasctl tag prefix. |
+| `namespace` | Identifier embedded in each measurement description on the RIPE Atlas API. Used to distinguish measurements created by different Terraform states or workspaces. Optional; defaults to `terraform-provider-ripe-atlas`. |
 
 ### Required API key permissions
 
