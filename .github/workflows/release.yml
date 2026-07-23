@@ -14,23 +14,23 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GOWORK: off
-      GOPRIVATE: github.com/supabase/*
-      GONOSUMDB: github.com/supabase/*
-
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Configure git for private Go modules
-        run: |
-          git config --global url."https://x-access-token:${{ secrets.ATLASCTL_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Import GPG key
+        id: import_gpg
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -40,3 +40,4 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}

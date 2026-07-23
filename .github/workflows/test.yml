@@ -12,15 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GOWORK: off
-      GOPRIVATE: github.com/supabase/*
-      GONOSUMDB: github.com/supabase/*
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Configure git for private Go modules
-        run: |
-          git config --global url."https://x-access-token:${{ secrets.ATLASCTL_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Set up Go
         uses: actions/setup-go@v5

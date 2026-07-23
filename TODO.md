@@ -1,24 +1,14 @@
 # TODO
 
-## GPG signing for Terraform Registry publication
+## Publish to Terraform Registry
 
-GPG signing is currently disabled in `.goreleaser.yml` and the release workflow.
-It is required before publishing to the Terraform Registry.
+Prerequisites are complete (GPG key registered, `supabase` namespace connected).
+Remaining step: push a release tag to trigger the signed release workflow.
 
-Steps to complete:
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
-1. Generate a GPG key (RSA 4096):
-   `gpg --full-generate-key`
-
-2. Export the private key:
-   `gpg --armor --export-secret-keys YOUR_KEY_ID`
-
-3. Add two secrets to the GitHub repo (Settings > Secrets > Actions):
-   - `GPG_PRIVATE_KEY` — the armored private key output from step 2
-   - `GPG_PASSPHRASE` — the passphrase used when generating the key
-
-4. Re-enable the `signs` block in `.goreleaser.yml`.
-
-5. Re-add the GPG import step and `GPG_FINGERPRINT` env var to `.github/workflows/release.yml`.
-
-6. Register the corresponding public key with the Terraform Registry under the `supabase` namespace at registry.terraform.io.
+After the GitHub Actions release workflow completes, the provider should appear at
+registry.terraform.io/providers/supabase/ripe-atlas within a few minutes.
