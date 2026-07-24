@@ -227,7 +227,7 @@ func (r *measurementResource) ModifyPlan(ctx context.Context, req resource.Modif
 		return
 	}
 
-	selected, err := runSelection(ctx, r.clients.snapshot, planData)
+	selected, err := runSelection(ctx, r.clients.probeSource, planData)
 	if err != nil {
 		// Best-effort: leave probe_ids unknown if selection cannot run at plan time.
 		resp.Diagnostics.Append(resp.Plan.Set(ctx, &planData)...)
@@ -264,7 +264,7 @@ func (r *measurementResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	selected, err := runSelection(ctx, r.clients.snapshot, state)
+	selected, err := runSelection(ctx, r.clients.probeSource, state)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to select probes", err.Error())
 		return
@@ -333,7 +333,7 @@ func (r *measurementResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	selected, err := runSelection(ctx, r.clients.snapshot, planData)
+	selected, err := runSelection(ctx, r.clients.probeSource, planData)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to select probes", err.Error())
 		return
@@ -509,12 +509,12 @@ func validateMeasurement(m measurementModel) diag.Diagnostics {
 	return diags
 }
 
-// runSelection loads the snapshot, applies exclude_tags hard-exclusion, then runs
-// probe selection for all cohorts together so drawdown is applied correctly.
-func runSelection(ctx context.Context, snapshotPath string, m measurementModel) ([]selection.SelectedCohort, error) {
-	snap, err := snapshot.Load(snapshotPath)
+// runSelection fetches probes from src, applies exclude_tags hard-exclusion,
+// then runs probe selection for all cohorts together so drawdown is applied correctly.
+func runSelection(ctx context.Context, src snapshot.ProbeSource, m measurementModel) ([]selection.SelectedCohort, error) {
+	rawProbes, err := src.Probes(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("loading snapshot: %w", err)
+		return nil, fmt.Errorf("loading probes: %w", err)
 	}
 
 	var excludeTags []string
@@ -524,8 +524,8 @@ func runSelection(ctx context.Context, snapshotPath string, m measurementModel) 
 		}
 	}
 
-	probes := selection.NewProbes(len(snap.Probes))
-	for _, p := range snap.Probes {
+	probes := selection.NewProbes(len(rawProbes))
+	for _, p := range rawProbes {
 		if !selection.HardExcluded(p, excludeTags) {
 			probes.Append(p)
 		}
