@@ -322,6 +322,50 @@ func TestRunSelection_DrawdownAcrossCohorts(t *testing.T) {
 	}
 }
 
+// ---- probeSourceFromEnv tests -----------------------------------------------
+
+func TestProbeSourceFromEnv_FileMode(t *testing.T) {
+	t.Setenv("RIPE_ATLAS_SNAPSHOT", snapshotPath(t))
+	src := probeSourceFromEnv(false)
+	if _, ok := src.(*snapshot.FileProbeSource); !ok {
+		t.Fatalf("expected *snapshot.FileProbeSource, got %T", src)
+	}
+	probes, err := src.Probes(context.Background())
+	if err != nil {
+		t.Fatalf("Probes: %v", err)
+	}
+	if len(probes) == 0 {
+		t.Error("expected non-empty probe list")
+	}
+}
+
+func TestProbeSourceFromEnv_CacheMode(t *testing.T) {
+	t.Setenv("RIPE_ATLAS_SNAPSHOT", "")
+	src := probeSourceFromEnv(false)
+	if _, ok := src.(*snapshot.CachedProbeSource); !ok {
+		t.Fatalf("expected *snapshot.CachedProbeSource, got %T", src)
+	}
+}
+
+func TestProbeSourceFromEnv_ModifyPlanFallback(t *testing.T) {
+	// When r.clients == nil, ModifyPlan must use probeSourceFromEnv and populate
+	// probe_ids. This exercises the Pulumi bridge preview lifecycle where
+	// Configure has not yet run.
+	t.Setenv("RIPE_ATLAS_SNAPSHOT", snapshotPath(t))
+
+	m := validDNSModel(t)
+	selected, err := runSelection(context.Background(), probeSourceFromEnv(false), m)
+	if err != nil {
+		t.Fatalf("runSelection with env fallback: %v", err)
+	}
+	if len(selected) == 0 {
+		t.Fatal("expected at least one selected cohort")
+	}
+	if len(cohortProbeIDs(selected[0])) == 0 {
+		t.Error("expected non-empty probe IDs from env fallback path")
+	}
+}
+
 // ---- buildCohortCfg tests ---------------------------------------------------
 
 func TestBuildCohortCfg_ASNKeyParsing(t *testing.T) {
