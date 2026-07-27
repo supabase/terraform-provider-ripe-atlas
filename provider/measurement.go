@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -75,6 +76,14 @@ func (r *measurementResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:    true,
 				ElementType: types.StringType,
 			},
+			"total_hourly_credits": schema.Int64Attribute{
+				Computed:    true,
+				Description: "Projected RIPE Atlas credit burn per hour, summed across all cohorts.",
+			},
+			"total_daily_credits": schema.Int64Attribute{
+				Computed:    true,
+				Description: "Projected RIPE Atlas credit burn per day, summed across all cohorts.",
+			},
 			"cohorts": schema.ListNestedAttribute{
 				Required:    true,
 				Description: "Ordered list of cohorts. Each creates one RIPE Atlas measurement. Selection runs in order; each cohort draws from the remaining probe pool after prior cohorts have claimed their probes.",
@@ -136,6 +145,14 @@ func (r *measurementResource) Schema(_ context.Context, _ resource.SchemaRequest
 							ElementType: types.Int64Type,
 							Description: "Probe IDs selected for this cohort.",
 						},
+						"hourly_credits": schema.Int64Attribute{
+							Computed:    true,
+							Description: "Projected RIPE Atlas credit burn per hour for this cohort.",
+						},
+						"daily_credits": schema.Int64Attribute{
+							Computed:    true,
+							Description: "Projected RIPE Atlas credit burn per day for this cohort.",
+						},
 					},
 				},
 			},
@@ -160,15 +177,19 @@ type cohortModel struct {
 	Cfg              *cfgModel    `tfsdk:"cfg"`
 	MsmID            types.Int64  `tfsdk:"msm_id"`
 	ProbeIDs         types.Set    `tfsdk:"probe_ids"`
+	HourlyCredits    types.Int64  `tfsdk:"hourly_credits"`
+	DailyCredits     types.Int64  `tfsdk:"daily_credits"`
 }
 
 type measurementModel struct {
-	Name        types.String  `tfsdk:"name"`
-	Target      types.String  `tfsdk:"target"`
-	MsmType     types.String  `tfsdk:"msm_type"`
-	AF          types.Int64   `tfsdk:"af"`
-	ExcludeTags types.List    `tfsdk:"exclude_tags"`
-	Cohorts     []cohortModel `tfsdk:"cohorts"`
+	Name               types.String  `tfsdk:"name"`
+	Target             types.String  `tfsdk:"target"`
+	MsmType            types.String  `tfsdk:"msm_type"`
+	AF                 types.Int64   `tfsdk:"af"`
+	ExcludeTags        types.List    `tfsdk:"exclude_tags"`
+	Cohorts            []cohortModel `tfsdk:"cohorts"`
+	TotalHourlyCredits types.Int64   `tfsdk:"total_hourly_credits"`
+	TotalDailyCredits  types.Int64   `tfsdk:"total_daily_credits"`
 }
 
 func (r *measurementResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -236,16 +257,27 @@ func (r *measurementResource) ModifyPlan(ctx context.Context, req resource.Modif
 		return
 	}
 
+	// Build a minimal config so DesiredState can populate HourlyCredits/DailyCredits on each spec.
+	msmCohorts := make([]config.MeasurementCohort, len(planData.Cohorts))
+	for i, c := range planData.Cohorts {
+		msmCohorts[i] = buildMeasurementCohort(c)
+	}
+	cfg := config.Config{
+		Measurements: []config.Measurement{{
+			Name:    planData.Name.ValueString(),
+			Type:    config.MeasurementType(planData.MsmType.ValueString()),
+			Target:  planData.Target.ValueString(),
+			AF:      int(planData.AF.ValueInt64()),
+			Cohorts: msmCohorts,
+		}},
+	}
+	specs := plan.DesiredState(cfg, map[string][]selection.SelectedCohort{
+		planData.Name.ValueString(): selected,
+	})
+
 	for i, sc := range selected {
-		ids := cohortProbeIDs(sc)
-		spec := plan.MsmSpec{
-			Key:      plan.MsmKey{Name: planData.Name.ValueString(), Cohort: planData.Cohorts[i].Name.ValueString()},
-			Target:   planData.Target.ValueString(),
-			Type:     plan.MsmType(planData.MsmType.ValueString()),
-			AF:       int(planData.AF.ValueInt64()),
-			Interval: int(planData.Cohorts[i].IntervalSeconds.ValueInt64()),
-			ProbeIDs: ids,
-		}
+		key := plan.MsmKey{Name: planData.Name.ValueString(), Cohort: planData.Cohorts[i].Name.ValueString()}
+		spec := specs[key]
 		if err := atlasapi.ValidateMsmSpec(spec); err != nil {
 			resp.Diagnostics.AddError(
 				fmt.Sprintf("Invalid measurement spec for cohort %q", planData.Cohorts[i].Name.ValueString()),
@@ -253,8 +285,24 @@ func (r *measurementResource) ModifyPlan(ctx context.Context, req resource.Modif
 			)
 			return
 		}
-		planData.Cohorts[i].ProbeIDs = probeIDsToSet(ids)
+		planData.Cohorts[i].ProbeIDs = probeIDsToSet(cohortProbeIDs(sc))
+		planData.Cohorts[i].HourlyCredits = types.Int64Value(spec.HourlyCredits)
+		planData.Cohorts[i].DailyCredits = types.Int64Value(spec.DailyCredits)
 	}
+
+	var totalHourly, totalDaily int64
+	for _, c := range planData.Cohorts {
+		totalHourly += c.HourlyCredits.ValueInt64()
+		totalDaily += c.DailyCredits.ValueInt64()
+	}
+	planData.TotalHourlyCredits = types.Int64Value(totalHourly)
+	planData.TotalDailyCredits = types.Int64Value(totalDaily)
+
+	coverage := selection.Report(selected)
+	resp.Diagnostics.AddWarning(
+		fmt.Sprintf("Probe selection: %s", planData.Name.ValueString()),
+		formatSelectionSummary(specs, coverage),
+	)
 
 	resp.Diagnostics.Append(resp.Plan.Set(ctx, &planData)...)
 }
@@ -626,4 +674,54 @@ func probeIDsToSet(ids []uint32) types.Set {
 		elems[i] = types.Int64Value(int64(id))
 	}
 	return types.SetValueMust(types.Int64Type, elems)
+}
+
+// formatSelectionSummary combines per-cohort specs and a coverage report into
+// a single human-readable string for use as a planning diagnostic warning.
+func formatSelectionSummary(specs map[plan.MsmKey]plan.MsmSpec, cov selection.CoverageReport) string {
+	var b strings.Builder
+
+	var totalDaily, totalHourly int64
+	// Sort keys for deterministic output.
+	keys := make([]plan.MsmKey, 0, len(specs))
+	for k := range specs {
+		keys = append(keys, k)
+	}
+	for i := 1; i < len(keys); i++ {
+		for j := i; j > 0 && specs[keys[j]].DailyCredits > specs[keys[j-1]].DailyCredits; j-- {
+			keys[j], keys[j-1] = keys[j-1], keys[j]
+		}
+	}
+	for _, k := range keys {
+		s := specs[k]
+		totalHourly += s.HourlyCredits
+		totalDaily += s.DailyCredits
+		fmt.Fprintf(&b, "  %s/%s (%s, %d probes, %ds): %s/day\n",
+			k.Name, k.Cohort, s.Type, len(s.ProbeIDs), s.Interval, formatInt(s.DailyCredits))
+	}
+	fmt.Fprintf(&b, "Credits: %s/hour  %s/day  %s/week\n", formatInt(totalHourly), formatInt(totalDaily), formatInt(totalDaily*7))
+	fmt.Fprintf(&b, "\n")
+	b.WriteString(cov.Format())
+
+	return b.String()
+}
+
+// formatInt formats an int64 with thousands separators for readability.
+func formatInt(n int64) string {
+	s := fmt.Sprintf("%d", n)
+	if len(s) <= 3 {
+		return s
+	}
+	var b strings.Builder
+	start := len(s) % 3
+	if start > 0 {
+		b.WriteString(s[:start])
+	}
+	for i := start; i < len(s); i += 3 {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(s[i : i+3])
+	}
+	return b.String()
 }
