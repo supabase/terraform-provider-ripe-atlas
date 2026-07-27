@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -221,13 +222,14 @@ func (r *measurementResource) ModifyPlan(ctx context.Context, req resource.Modif
 		}
 	}
 
-	// Selection requires provider configuration. Skip best-effort if not ready.
-	if r.clients == nil {
-		resp.Diagnostics.Append(resp.Plan.Set(ctx, &planData)...)
-		return
+	// Prefer the provider-configured source; fall back to env vars when Configure
+	// has not yet run (e.g. Pulumi bridge preview lifecycle).
+	src := probeSourceFromEnv(os.Getenv("RIPE_ATLAS_DEBUG") != "")
+	if r.clients != nil {
+		src = r.clients.probeSource
 	}
 
-	selected, err := runSelection(ctx, r.clients.probeSource, planData)
+	selected, err := runSelection(ctx, src, planData)
 	if err != nil {
 		// Best-effort: leave probe_ids unknown if selection cannot run at plan time.
 		resp.Diagnostics.Append(resp.Plan.Set(ctx, &planData)...)

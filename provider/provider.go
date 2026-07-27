@@ -130,6 +130,19 @@ func (p *ripeAtlasProvider) DataSources(_ context.Context) []func() datasource.D
 	return []func() datasource.DataSource{}
 }
 
+// probeSourceFromEnv builds a ProbeSource using only environment variables.
+// Used as a fallback in ModifyPlan when provider Configure has not yet run
+// (e.g. Pulumi bridge preview lifecycle where Configure follows planning).
+func probeSourceFromEnv(verbose bool) snapshot.ProbeSource {
+	if path := os.Getenv("RIPE_ATLAS_SNAPSHOT"); path != "" {
+		return &snapshot.FileProbeSource{Path: path}
+	}
+	return &snapshot.CachedProbeSource{
+		// Path and TTL zero → DefaultCachePath and DefaultCacheTTL
+		Client: &atlasapi.ProbeClient{Verbose: verbose},
+	}
+}
+
 // buildProbeSource returns the appropriate ProbeSource based on provider config.
 //
 // When snapshot is set (via config or RIPE_ATLAS_SNAPSHOT env var), a
