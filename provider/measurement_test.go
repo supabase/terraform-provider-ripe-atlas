@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	atlasapi "github.com/supabase/atlasctl/pkg/atlasapi"
 	"github.com/supabase/atlasctl/pkg/plan"
+	"github.com/supabase/atlasctl/pkg/snapshot"
 )
 
 // snapshotPath returns the absolute path to the shared test snapshot.
@@ -218,7 +219,7 @@ func TestValidateMsmSpec_EmptyTarget_NonDNS(t *testing.T) {
 
 func TestRunSelection_ValidDNS(t *testing.T) {
 	m := validDNSModel(t)
-	selected, err := runSelection(context.Background(), snapshotPath(t), m)
+	selected, err := runSelection(context.Background(), &snapshot.FileProbeSource{Path: snapshotPath(t)}, m)
 	if err != nil {
 		t.Fatalf("runSelection: %v", err)
 	}
@@ -241,7 +242,7 @@ func TestRunSelection_ExcludeTagsApplied(t *testing.T) {
 	m.ExcludeTags = types.ListValueMust(types.StringType, []attr.Value{
 		types.StringValue("broken"),
 	})
-	selected, err := runSelection(context.Background(), snapshotPath(t), m)
+	selected, err := runSelection(context.Background(), &snapshot.FileProbeSource{Path: snapshotPath(t)}, m)
 	if err != nil {
 		t.Fatalf("runSelection: %v", err)
 	}
@@ -257,7 +258,7 @@ func TestRunSelection_IncludeProbeIDsHonored(t *testing.T) {
 	m.Cohorts[0].IncludeProbeIDs = types.SetValueMust(types.Int64Type, []attr.Value{
 		types.Int64Value(1001),
 	})
-	selected, err := runSelection(context.Background(), snapshotPath(t), m)
+	selected, err := runSelection(context.Background(), &snapshot.FileProbeSource{Path: snapshotPath(t)}, m)
 	if err != nil {
 		t.Fatalf("runSelection: %v", err)
 	}
@@ -275,7 +276,7 @@ func TestRunSelection_IncludeProbeIDsHonored(t *testing.T) {
 
 func TestRunSelection_MissingSnapshot(t *testing.T) {
 	m := validDNSModel(t)
-	if _, err := runSelection(context.Background(), "/nonexistent/snapshot.json", m); err == nil {
+	if _, err := runSelection(context.Background(), &snapshot.FileProbeSource{Path: "/nonexistent/snapshot.json"}, m); err == nil {
 		t.Error("expected error for missing snapshot")
 	}
 }
@@ -302,7 +303,7 @@ func TestRunSelection_DrawdownAcrossCohorts(t *testing.T) {
 			ExcludeProbeIDs: nullSet(),
 		},
 	}
-	selected, err := runSelection(context.Background(), snapshotPath(t), m)
+	selected, err := runSelection(context.Background(), &snapshot.FileProbeSource{Path: snapshotPath(t)}, m)
 	if err != nil {
 		t.Fatalf("runSelection: %v", err)
 	}
