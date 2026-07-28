@@ -57,12 +57,11 @@ func validCohort(t *testing.T) cohortModel {
 func validDNSModel(t *testing.T) measurementModel {
 	t.Helper()
 	return measurementModel{
-		Name:        strVal("test-dns"),
-		Target:      strVal("example.com"),
-		MsmType:     strVal("dns"),
-		AF:          int64Val(4),
-		ExcludeTags: nullList(),
-		Cohorts:     []cohortModel{validCohort(t)},
+		Name:    strVal("test-dns"),
+		Target:  strVal("example.com"),
+		MsmType: strVal("dns"),
+		AF:      int64Val(4),
+		Cohorts: []cohortModel{validCohort(t)},
 	}
 }
 
@@ -236,12 +235,14 @@ func TestRunSelection_ValidDNS(t *testing.T) {
 }
 
 func TestRunSelection_ExcludeTagsApplied(t *testing.T) {
-	// The snapshot has probe 9999 tagged "broken". With exclude_tags=["broken"]
+	// The snapshot has probe 9999 tagged "broken". With cohort cfg.exclude_tags=["broken"]
 	// it should never appear in the result.
 	m := validDNSModel(t)
-	m.ExcludeTags = types.ListValueMust(types.StringType, []attr.Value{
-		types.StringValue("broken"),
-	})
+	m.Cohorts[0].Cfg = &cfgModel{
+		ExcludeTags: types.ListValueMust(types.StringType, []attr.Value{
+			types.StringValue("broken"),
+		}),
+	}
 	selected, err := runSelection(context.Background(), &snapshot.FileProbeSource{Path: snapshotPath(t)}, m)
 	if err != nil {
 		t.Fatalf("runSelection: %v", err)
