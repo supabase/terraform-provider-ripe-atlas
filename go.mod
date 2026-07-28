@@ -4,13 +4,14 @@ go 1.26.2
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
-	github.com/supabase/atlasctl v0.1.3
+	github.com/supabase/atlasctl v0.1.4
 )
 
 require (
 	github.com/Kl1mn/h3-go v0.0.4 // indirect
 	github.com/ThingsIXFoundation/h3-light v0.0.0-20230404055559-b4bb7d4d9c47 // indirect
 	github.com/fatih/color v1.18.0 // indirect
+	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
@@ -27,7 +28,7 @@ require (
 	github.com/miekg/dns v1.1.72 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/oklog/run v1.1.0 // indirect
-	github.com/robert-kisteleki/goat v0.8.1 // indirect
+	github.com/robert-kisteleki/goat v0.9.0 // indirect
 	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
