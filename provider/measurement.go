@@ -25,7 +25,6 @@ import (
 	"github.com/supabase/atlasctl/pkg/snapshot"
 )
 
-const h3Resolution = 3
 
 var _ resource.Resource = &measurementResource{}
 var _ resource.ResourceWithModifyPlan = &measurementResource{}
@@ -72,9 +71,33 @@ func (r *measurementResource) Schema(_ context.Context, _ resource.SchemaRequest
 					int64planmodifier.RequiresReplace(),
 				},
 			},
-			"exclude_tags": schema.ListAttribute{
+			"http_method": schema.StringAttribute{
 				Optional:    true,
-				ElementType: types.StringType,
+				Description: "HTTP method: GET, HEAD (default), or POST. Only valid for http measurements.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"http_path": schema.StringAttribute{
+				Optional:    true,
+				Description: "URL path for HTTP measurements (default \"/\").",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"http_port": schema.Int64Attribute{
+				Optional:    true,
+				Description: "TCP port for HTTP measurements (default 80).",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.RequiresReplace(),
+				},
+			},
+			"http_version": schema.StringAttribute{
+				Optional:    true,
+				Description: "HTTP version: \"1.0\" or \"1.1\". Only valid for http measurements.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"total_hourly_credits": schema.Int64Attribute{
 				Computed:    true,
@@ -118,6 +141,15 @@ func (r *measurementResource) Schema(_ context.Context, _ resource.SchemaRequest
 						"cfg": schema.SingleNestedAttribute{
 							Optional: true,
 							Attributes: map[string]schema.Attribute{
+								"exclude_tags": schema.ListAttribute{
+									Optional:    true,
+									ElementType: types.StringType,
+									Description: "Probe tags that hard-exclude a probe from this cohort.",
+								},
+								"h3_resolution": schema.Int64Attribute{
+									Optional:    true,
+									Description: "H3 cell resolution for geographic diversity (1–15, default 3).",
+								},
 								"asn": schema.MapAttribute{
 									Optional:    true,
 									ElementType: types.Int64Type,
@@ -161,10 +193,12 @@ func (r *measurementResource) Schema(_ context.Context, _ resource.SchemaRequest
 }
 
 type cfgModel struct {
-	ASN       types.Map `tfsdk:"asn"`
-	Tags      types.Map `tfsdk:"tags"`
-	Countries types.Map `tfsdk:"countries"`
-	Stability types.Map `tfsdk:"stability"`
+	ExcludeTags  types.List  `tfsdk:"exclude_tags"`
+	H3Resolution types.Int64 `tfsdk:"h3_resolution"`
+	ASN          types.Map   `tfsdk:"asn"`
+	Tags         types.Map   `tfsdk:"tags"`
+	Countries    types.Map   `tfsdk:"countries"`
+	Stability    types.Map   `tfsdk:"stability"`
 }
 
 type cohortModel struct {
@@ -186,7 +220,10 @@ type measurementModel struct {
 	Target             types.String  `tfsdk:"target"`
 	MsmType            types.String  `tfsdk:"msm_type"`
 	AF                 types.Int64   `tfsdk:"af"`
-	ExcludeTags        types.List    `tfsdk:"exclude_tags"`
+	HttpMethod         types.String  `tfsdk:"http_method"`
+	HttpPath           types.String  `tfsdk:"http_path"`
+	HttpPort           types.Int64   `tfsdk:"http_port"`
+	HttpVersion        types.String  `tfsdk:"http_version"`
 	Cohorts            []cohortModel `tfsdk:"cohorts"`
 	TotalHourlyCredits types.Int64   `tfsdk:"total_hourly_credits"`
 	TotalDailyCredits  types.Int64   `tfsdk:"total_daily_credits"`
@@ -264,11 +301,15 @@ func (r *measurementResource) ModifyPlan(ctx context.Context, req resource.Modif
 	}
 	cfg := config.Config{
 		Measurements: []config.Measurement{{
-			Name:    planData.Name.ValueString(),
-			Type:    config.MeasurementType(planData.MsmType.ValueString()),
-			Target:  planData.Target.ValueString(),
-			AF:      int(planData.AF.ValueInt64()),
-			Cohorts: msmCohorts,
+			Name:        planData.Name.ValueString(),
+			Type:        config.MeasurementType(planData.MsmType.ValueString()),
+			Target:      planData.Target.ValueString(),
+			AF:          int(planData.AF.ValueInt64()),
+			HttpMethod:  planData.HttpMethod.ValueString(),
+			HttpPath:    planData.HttpPath.ValueString(),
+			HttpPort:    uint(planData.HttpPort.ValueInt64()),
+			HttpVersion: planData.HttpVersion.ValueString(),
+			Cohorts:     msmCohorts,
 		}},
 	}
 	specs := plan.DesiredState(cfg, map[string][]selection.SelectedCohort{
@@ -501,8 +542,11 @@ func (r *measurementResource) Delete(ctx context.Context, req resource.DeleteReq
 }
 
 var validMsmTypes = map[string]bool{
-	"dns": true, "ping": true, "tls": true, "traceroute": true,
+	"dns": true, "ping": true, "tls": true, "traceroute": true, "http": true,
 }
+
+var validHttpMethods = map[string]bool{"GET": true, "HEAD": true, "POST": true}
+var validHttpVersions = map[string]bool{"1.0": true, "1.1": true}
 
 func validateMeasurement(m measurementModel) diag.Diagnostics {
 	var diags diag.Diagnostics
@@ -511,8 +555,34 @@ func validateMeasurement(m measurementModel) diag.Diagnostics {
 		diags.AddAttributeError(
 			path.Root("msm_type"),
 			"Invalid msm_type",
-			fmt.Sprintf("msm_type must be one of: dns, ping, tls, traceroute. Got %q.", m.MsmType.ValueString()),
+			fmt.Sprintf("msm_type must be one of: dns, ping, tls, traceroute, http. Got %q.", m.MsmType.ValueString()),
 		)
+	}
+
+	if m.MsmType.ValueString() == "http" {
+		if v := m.HttpMethod.ValueString(); v != "" && !validHttpMethods[v] {
+			diags.AddAttributeError(path.Root("http_method"), "Invalid http_method",
+				fmt.Sprintf("http_method must be GET, HEAD, or POST. Got %q.", v))
+		}
+		if v := m.HttpVersion.ValueString(); v != "" && !validHttpVersions[v] {
+			diags.AddAttributeError(path.Root("http_version"), "Invalid http_version",
+				fmt.Sprintf("http_version must be \"1.0\" or \"1.1\". Got %q.", v))
+		}
+	} else {
+		for _, f := range []struct {
+			name string
+			set  bool
+		}{
+			{"http_method", !m.HttpMethod.IsNull() && !m.HttpMethod.IsUnknown()},
+			{"http_path", !m.HttpPath.IsNull() && !m.HttpPath.IsUnknown()},
+			{"http_port", !m.HttpPort.IsNull() && !m.HttpPort.IsUnknown()},
+			{"http_version", !m.HttpVersion.IsNull() && !m.HttpVersion.IsUnknown()},
+		} {
+			if f.set {
+				diags.AddAttributeError(path.Root(f.name), fmt.Sprintf("%s requires http type", f.name),
+					fmt.Sprintf("%s is only valid when msm_type is \"http\".", f.name))
+			}
+		}
 	}
 
 	af := m.AF.ValueInt64()
@@ -559,26 +629,18 @@ func validateMeasurement(m measurementModel) diag.Diagnostics {
 	return diags
 }
 
-// runSelection fetches probes from src, applies exclude_tags hard-exclusion,
-// then runs probe selection for all cohorts together so drawdown is applied correctly.
+// runSelection fetches probes from src and runs probe selection for all cohorts
+// together so drawdown is applied correctly. Per-cohort exclude_tags filtering
+// is handled inside selection.Select via cohort.Cfg.ExcludeTags.
 func runSelection(ctx context.Context, src snapshot.ProbeSource, m measurementModel) ([]selection.SelectedCohort, error) {
 	rawProbes, err := src.Probes(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("loading probes: %w", err)
 	}
 
-	var excludeTags []string
-	if !m.ExcludeTags.IsNull() && !m.ExcludeTags.IsUnknown() {
-		for _, v := range m.ExcludeTags.Elements() {
-			excludeTags = append(excludeTags, v.(types.String).ValueString())
-		}
-	}
-
 	probes := selection.NewProbes(len(rawProbes))
 	for _, p := range rawProbes {
-		if !selection.HardExcluded(p, excludeTags) {
-			probes.Append(p)
-		}
+		probes.Append(p)
 	}
 	probes.Close()
 
@@ -587,8 +649,8 @@ func runSelection(ctx context.Context, src snapshot.ProbeSource, m measurementMo
 		cohorts[i] = buildMeasurementCohort(c)
 	}
 
-	orderer := selection.NewDefaultOrderer(h3Resolution)
-	selected, err := selection.Select(ctx, probes, cohorts, orderer, h3Resolution)
+	orderer := selection.NewDefaultOrderer()
+	selected, err := selection.Select(ctx, probes, cohorts, orderer)
 	if err != nil {
 		return nil, fmt.Errorf("selecting probes: %w", err)
 	}
@@ -635,6 +697,16 @@ func buildMeasurementCohort(c cohortModel) config.MeasurementCohort {
 
 func buildCohortCfg(c cfgModel) config.CohortCfg {
 	var cfg config.CohortCfg
+
+	if !c.ExcludeTags.IsNull() && !c.ExcludeTags.IsUnknown() {
+		for _, v := range c.ExcludeTags.Elements() {
+			cfg.ExcludeTags = append(cfg.ExcludeTags, v.(types.String).ValueString())
+		}
+	}
+
+	if !c.H3Resolution.IsNull() && !c.H3Resolution.IsUnknown() {
+		cfg.H3Resolution = int(c.H3Resolution.ValueInt64())
+	}
 
 	if !c.ASN.IsNull() && !c.ASN.IsUnknown() {
 		cfg.ASN = make(map[uint32]int, len(c.ASN.Elements()))
