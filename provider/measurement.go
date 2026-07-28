@@ -166,6 +166,42 @@ func (r *measurementResource) Schema(_ context.Context, _ resource.SchemaRequest
 									Optional:    true,
 									ElementType: types.Int64Type,
 								},
+								"cities": schema.ListNestedAttribute{
+									Optional:    true,
+									Description: "City clusters with scoring bonuses and H3 cell density coefficients for probes within their radius.",
+									NestedObject: schema.NestedAttributeObject{
+										Attributes: map[string]schema.Attribute{
+											"name": schema.StringAttribute{
+												Required:    true,
+												Description: "Human-readable city name.",
+											},
+											"lat": schema.Float64Attribute{
+												Required:    true,
+												Description: "City center latitude.",
+											},
+											"lon": schema.Float64Attribute{
+												Required:    true,
+												Description: "City center longitude.",
+											},
+											"radius_km": schema.Float64Attribute{
+												Required:    true,
+												Description: "Radius in kilometers within which probes are considered part of this city.",
+											},
+											"density_coefficient": schema.Float64Attribute{
+												Required:    true,
+												Description: "H3 cell capacity multiplier for probes within this city. Values > 1 relax the per-cell limit; values < 1 tighten it.",
+											},
+											"score": schema.Int64Attribute{
+												Optional:    true,
+												Description: "Additive scoring bonus for probes within radius_km. 0 means no bonus.",
+											},
+										},
+									},
+								},
+								"disable_continental_shuffle": schema.BoolAttribute{
+									Optional:    true,
+									Description: "Disable round-robin continental zone interleaving within band tiers. Default false (shuffle enabled).",
+								},
 							},
 						},
 						"msm_id": schema.Int64Attribute{
@@ -192,13 +228,24 @@ func (r *measurementResource) Schema(_ context.Context, _ resource.SchemaRequest
 	}
 }
 
+type cityModel struct {
+	Name               types.String  `tfsdk:"name"`
+	Lat                types.Float64 `tfsdk:"lat"`
+	Lon                types.Float64 `tfsdk:"lon"`
+	RadiusKm           types.Float64 `tfsdk:"radius_km"`
+	DensityCoefficient types.Float64 `tfsdk:"density_coefficient"`
+	Score              types.Int64   `tfsdk:"score"`
+}
+
 type cfgModel struct {
-	ExcludeTags  types.List  `tfsdk:"exclude_tags"`
-	H3Resolution types.Int64 `tfsdk:"h3_resolution"`
-	ASN          types.Map   `tfsdk:"asn"`
-	Tags         types.Map   `tfsdk:"tags"`
-	Countries    types.Map   `tfsdk:"countries"`
-	Stability    types.Map   `tfsdk:"stability"`
+	ExcludeTags               types.List  `tfsdk:"exclude_tags"`
+	H3Resolution              types.Int64 `tfsdk:"h3_resolution"`
+	ASN                       types.Map   `tfsdk:"asn"`
+	Tags                      types.Map   `tfsdk:"tags"`
+	Countries                 types.Map   `tfsdk:"countries"`
+	Stability                 types.Map   `tfsdk:"stability"`
+	Cities                    types.List  `tfsdk:"cities"`
+	DisableContinentalShuffle types.Bool  `tfsdk:"disable_continental_shuffle"`
 }
 
 type cohortModel struct {
@@ -735,6 +782,28 @@ func buildCohortCfg(c cfgModel) config.CohortCfg {
 		for k, v := range c.Stability.Elements() {
 			cfg.Stability[k] = int(v.(types.Int64).ValueInt64())
 		}
+	}
+
+	if !c.Cities.IsNull() && !c.Cities.IsUnknown() {
+		for _, elem := range c.Cities.Elements() {
+			obj := elem.(types.Object)
+			attrs := obj.Attributes()
+			city := config.CityConfig{
+				Name:               attrs["name"].(types.String).ValueString(),
+				Lat:                attrs["lat"].(types.Float64).ValueFloat64(),
+				Lon:                attrs["lon"].(types.Float64).ValueFloat64(),
+				RadiusKm:           attrs["radius_km"].(types.Float64).ValueFloat64(),
+				DensityCoefficient: attrs["density_coefficient"].(types.Float64).ValueFloat64(),
+			}
+			if s := attrs["score"]; s != nil && !s.(types.Int64).IsNull() && !s.(types.Int64).IsUnknown() {
+				city.Score = int(s.(types.Int64).ValueInt64())
+			}
+			cfg.Cities = append(cfg.Cities, city)
+		}
+	}
+
+	if !c.DisableContinentalShuffle.IsNull() && !c.DisableContinentalShuffle.IsUnknown() {
+		cfg.DisableContinentalShuffle = c.DisableContinentalShuffle.ValueBool()
 	}
 
 	return cfg
