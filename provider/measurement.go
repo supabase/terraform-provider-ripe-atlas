@@ -25,9 +25,10 @@ import (
 	"github.com/supabase/atlasctl/pkg/snapshot"
 )
 
-
-var _ resource.Resource = &measurementResource{}
-var _ resource.ResourceWithModifyPlan = &measurementResource{}
+var (
+	_ resource.Resource               = &measurementResource{}
+	_ resource.ResourceWithModifyPlan = &measurementResource{}
+)
 
 type measurementResource struct {
 	clients *providerClients
@@ -226,15 +227,6 @@ func (r *measurementResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 		},
 	}
-}
-
-type cityModel struct {
-	Name               types.String  `tfsdk:"name"`
-	Lat                types.Float64 `tfsdk:"lat"`
-	Lon                types.Float64 `tfsdk:"lon"`
-	RadiusKm           types.Float64 `tfsdk:"radius_km"`
-	DensityCoefficient types.Float64 `tfsdk:"density_coefficient"`
-	Score              types.Int64   `tfsdk:"score"`
 }
 
 type cfgModel struct {
@@ -592,8 +584,10 @@ var validMsmTypes = map[string]bool{
 	"dns": true, "ping": true, "tls": true, "traceroute": true, "http": true,
 }
 
-var validHttpMethods = map[string]bool{"GET": true, "HEAD": true, "POST": true}
-var validHttpVersions = map[string]bool{"1.0": true, "1.1": true}
+var (
+	validHttpMethods  = map[string]bool{"GET": true, "HEAD": true, "POST": true}
+	validHttpVersions = map[string]bool{"1.0": true, "1.1": true}
+)
 
 func validateMeasurement(m measurementModel) diag.Diagnostics {
 	var diags diag.Diagnostics
