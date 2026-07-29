@@ -37,10 +37,10 @@ func loadTestdata(t *testing.T, rel string) string {
 
 // ---- helpers for constructing models ----------------------------------------
 
-func strVal(s string) types.String  { return types.StringValue(s) }
-func int64Val(n int64) types.Int64  { return types.Int64Value(n) }
-func nullList() types.List          { return types.ListValueMust(types.StringType, []attr.Value{}) }
-func nullSet() types.Set            { return types.SetValueMust(types.Int64Type, []attr.Value{}) }
+func strVal(s string) types.String { return types.StringValue(s) }
+func int64Val(n int64) types.Int64 { return types.Int64Value(n) }
+
+func nullSet() types.Set { return types.SetValueMust(types.Int64Type, []attr.Value{}) }
 
 func validCohort(t *testing.T) cohortModel {
 	t.Helper()
@@ -288,20 +288,20 @@ func TestRunSelection_DrawdownAcrossCohorts(t *testing.T) {
 	m := validDNSModel(t)
 	m.Cohorts = []cohortModel{
 		{
-			Name:            strVal("first"),
-			ProbeCount:      int64Val(3),
+			Name:             strVal("first"),
+			ProbeCount:       int64Val(3),
 			MaxProbesPerCell: int64Val(2),
-			IntervalSeconds: int64Val(60),
-			IncludeProbeIDs: nullSet(),
-			ExcludeProbeIDs: nullSet(),
+			IntervalSeconds:  int64Val(60),
+			IncludeProbeIDs:  nullSet(),
+			ExcludeProbeIDs:  nullSet(),
 		},
 		{
-			Name:            strVal("second"),
-			ProbeCount:      int64Val(3),
+			Name:             strVal("second"),
+			ProbeCount:       int64Val(3),
 			MaxProbesPerCell: int64Val(2),
-			IntervalSeconds: int64Val(60),
-			IncludeProbeIDs: nullSet(),
-			ExcludeProbeIDs: nullSet(),
+			IntervalSeconds:  int64Val(60),
+			IncludeProbeIDs:  nullSet(),
+			ExcludeProbeIDs:  nullSet(),
 		},
 	}
 	selected, err := runSelection(context.Background(), &snapshot.FileProbeSource{Path: snapshotPath(t)}, m)
