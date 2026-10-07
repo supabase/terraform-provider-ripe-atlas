@@ -111,6 +111,8 @@ Each item in the list defines one cohort and creates one RIPE Atlas measurement.
 
 * `name` - (Required, Forces new resource) Cohort tier name, for example `high-freq`.
 
+* `description` - (Optional) Free-form description for this cohort, carried through to the measurement output unchanged (for example, to tag downstream systems like Grafana). Defaults to an empty string.
+
 * `probe_count` - (Required, Forces new resource) Number of probes to select.
 
 * `max_probes_per_cell` - (Required, Forces new resource) Maximum probes per H3 geographic cell.

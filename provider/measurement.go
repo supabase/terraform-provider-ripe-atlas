@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	atlasapi "github.com/supabase/atlasctl/pkg/atlasapi"
@@ -118,6 +119,12 @@ func (r *measurementResource) Schema(_ context.Context, _ resource.SchemaRequest
 							PlanModifiers: []planmodifier.String{
 								stringplanmodifier.RequiresReplace(),
 							},
+						},
+						"description": schema.StringAttribute{
+							Optional:    true,
+							Computed:    true,
+							Default:     stringdefault.StaticString(""),
+							Description: "Free-form description for this cohort, carried through to the measurement output unchanged. Defaults to an empty string.",
 						},
 						"probe_count": schema.Int64Attribute{
 							Required: true,
@@ -242,6 +249,7 @@ type cfgModel struct {
 
 type cohortModel struct {
 	Name             types.String `tfsdk:"name"`
+	Description      types.String `tfsdk:"description"`
 	ProbeCount       types.Int64  `tfsdk:"probe_count"`
 	MaxProbesPerCell types.Int64  `tfsdk:"max_probes_per_cell"`
 	IntervalSeconds  types.Int64  `tfsdk:"interval_seconds"`
