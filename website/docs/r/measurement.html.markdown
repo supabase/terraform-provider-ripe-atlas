@@ -105,6 +105,55 @@ output "credit_burn" {
 
 * `http_version` - (Optional, Forces new resource) HTTP protocol version. One of `"1.0"` or `"1.1"`. Only valid when `msm_type` is `http`.
 
+### Option blocks
+
+Each block is an optional object. Unset attributes are omitted from the RIPE Atlas request and the API default applies. Changing any value in a block forces a new measurement. The `ping`, `traceroute`, `dns`, `tls` and `http` blocks are only valid when `msm_type` matches the block name.
+
+* `common` - (Optional, Forces new resource) Valid for every type.
+  * `resolve_on_probe` - (Optional) Resolve the target on each probe.
+  * `spread` - (Optional) Seconds over which probe start times are spread.
+  * `skip_dns_check` - (Optional) Skip the DNS check on the target.
+  * `target_update_hours` - (Optional) Re-resolve the target every N hours.
+  * `auto_topup` - (Optional) Replace probes that disconnect.
+  * `auto_topup_prb_days_off` - (Optional) Days offline before a probe is replaced.
+  * `auto_topup_prb_similarity` - (Optional) Similarity from 0 to 1 required of replacement probes.
+  * `start_time`, `stop_time` - (Optional) RFC 3339 timestamps. `stop_time` must be after `start_time`.
+  * `bill_to` - (Optional) Account to bill credits to.
+
+* `ping` - (Optional, Forces new resource) `packets`, `packet_interval` (ms), `include_probe_id`.
+
+* `traceroute` - (Optional, Forces new resource) `protocol` (`ICMP`, `UDP`, or `TCP`), `response_timeout`, `packets`, `paris`, `first_hop`, `max_hops`, `destination_option_size`, `hop_by_hop_option_size`, `dont_fragment`.
+
+* `dns` - (Optional, Forces new resource) `query_type` (default `A`), `query_class` (`IN` or `CHAOS`), `protocol` (`UDP` or `TCP`), `use_macros`, `set_nsid_bit`, `include_qbuf`, `prepend_probe_id`, `set_rd_bit`, `set_do_bit`, `udp_payload_size`, `retry`, `timeout` (ms).
+
+* `tls` - (Optional, Forces new resource) `port` (default `443`), `hostname` (SNI).
+
+* `http` - (Optional, Forces new resource) `query_string`, `header_bytes`, `extended_timing`, `more_extended_timing`. These add to the `http_*` attributes above.
+
+Example:
+
+```hcl
+resource "ripeatlas_measurement" "dns_mx" {
+  name     = "dns-mx"
+  target   = "example.com"
+  msm_type = "dns"
+
+  common = {
+    resolve_on_probe = true
+    spread           = 60
+  }
+
+  dns = {
+    query_type = "MX"
+    set_rd_bit = true
+  }
+
+  cohorts = [
+    { name = "global", probe_count = 50, max_probes_per_cell = 2, interval_seconds = 300 },
+  ]
+}
+```
+
 ### `cohorts` list (required, one or more items)
 
 Each item in the list defines one cohort and creates one RIPE Atlas measurement.

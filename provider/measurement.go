@@ -234,6 +234,9 @@ func (r *measurementResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 		},
 	}
+	for name, attr := range optionAttributes() {
+		resp.Schema.Attributes[name] = attr
+	}
 }
 
 type cfgModel struct {
@@ -263,17 +266,23 @@ type cohortModel struct {
 }
 
 type measurementModel struct {
-	Name               types.String  `tfsdk:"name"`
-	Target             types.String  `tfsdk:"target"`
-	MsmType            types.String  `tfsdk:"msm_type"`
-	AF                 types.Int64   `tfsdk:"af"`
-	HttpMethod         types.String  `tfsdk:"http_method"`
-	HttpPath           types.String  `tfsdk:"http_path"`
-	HttpPort           types.Int64   `tfsdk:"http_port"`
-	HttpVersion        types.String  `tfsdk:"http_version"`
-	Cohorts            []cohortModel `tfsdk:"cohorts"`
-	TotalHourlyCredits types.Int64   `tfsdk:"total_hourly_credits"`
-	TotalDailyCredits  types.Int64   `tfsdk:"total_daily_credits"`
+	Name               types.String            `tfsdk:"name"`
+	Target             types.String            `tfsdk:"target"`
+	MsmType            types.String            `tfsdk:"msm_type"`
+	AF                 types.Int64             `tfsdk:"af"`
+	HttpMethod         types.String            `tfsdk:"http_method"`
+	HttpPath           types.String            `tfsdk:"http_path"`
+	HttpPort           types.Int64             `tfsdk:"http_port"`
+	HttpVersion        types.String            `tfsdk:"http_version"`
+	Common             *commonOptionsModel     `tfsdk:"common"`
+	Ping               *pingOptionsModel       `tfsdk:"ping"`
+	Traceroute         *tracerouteOptionsModel `tfsdk:"traceroute"`
+	DNS                *dnsOptionsModel        `tfsdk:"dns"`
+	TLS                *tlsOptionsModel        `tfsdk:"tls"`
+	HTTP               *httpOptionsModel       `tfsdk:"http"`
+	Cohorts            []cohortModel           `tfsdk:"cohorts"`
+	TotalHourlyCredits types.Int64             `tfsdk:"total_hourly_credits"`
+	TotalDailyCredits  types.Int64             `tfsdk:"total_daily_credits"`
 }
 
 func (r *measurementResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -356,6 +365,7 @@ func (r *measurementResource) ModifyPlan(ctx context.Context, req resource.Modif
 			HttpPath:    planData.HttpPath.ValueString(),
 			HttpPort:    uint(planData.HttpPort.ValueInt64()),
 			HttpVersion: planData.HttpVersion.ValueString(),
+			MsmOptions:  buildMsmOptions(planData),
 			Cohorts:     msmCohorts,
 		}},
 	}
@@ -417,6 +427,12 @@ func (r *measurementResource) Create(ctx context.Context, req resource.CreateReq
 			AF:       int(state.AF.ValueInt64()),
 			Interval: int(state.Cohorts[i].IntervalSeconds.ValueInt64()),
 			ProbeIDs: ids,
+
+			HttpMethod:  state.HttpMethod.ValueString(),
+			HttpPath:    state.HttpPath.ValueString(),
+			HttpPort:    uint(state.HttpPort.ValueInt64()),
+			HttpVersion: state.HttpVersion.ValueString(),
+			Options:     buildMsmOptions(state),
 		}
 
 		msmID, err := r.clients.apply.CreateMeasurement(ctx, spec)
@@ -542,6 +558,12 @@ func (r *measurementResource) Update(ctx context.Context, req resource.UpdateReq
 				AF:       int(planData.AF.ValueInt64()),
 				Interval: int(planData.Cohorts[i].IntervalSeconds.ValueInt64()),
 				ProbeIDs: ids,
+
+				HttpMethod:  planData.HttpMethod.ValueString(),
+				HttpPath:    planData.HttpPath.ValueString(),
+				HttpPort:    uint(planData.HttpPort.ValueInt64()),
+				HttpVersion: planData.HttpVersion.ValueString(),
+				Options:     buildMsmOptions(planData),
 			}
 			msmID, err := r.clients.apply.CreateMeasurement(ctx, spec)
 			if err != nil {
@@ -633,6 +655,8 @@ func validateMeasurement(m measurementModel) diag.Diagnostics {
 			}
 		}
 	}
+
+	diags.Append(validateOptions(m)...)
 
 	af := m.AF.ValueInt64()
 	if af != 4 && af != 6 {
